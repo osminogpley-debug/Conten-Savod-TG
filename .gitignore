@@ -15,6 +15,7 @@ venv/
 chinaya.db
 logs/
 images/
+.bot.instance.lock
 
 # OS/editor
 .vscode/

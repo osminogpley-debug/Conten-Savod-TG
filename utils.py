@@ -70,6 +70,7 @@ def build_menu_keyboard():
          InlineKeyboardButton("📚 Очередь тем", callback_data="menu_queue")],
         [InlineKeyboardButton("🤖 Автопостинг", callback_data="menu_autopost"),
          InlineKeyboardButton("🧪 Тест", callback_data="menu_testpost")],
+        [InlineKeyboardButton("💡 Генератор идей", callback_data="menu_ideas")],
     ]
     if not CHANNEL_ID:
         rows.append([InlineKeyboardButton("📺 Подключить канал", callback_data="menu_connect")])

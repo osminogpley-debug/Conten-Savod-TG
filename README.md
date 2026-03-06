@@ -8,6 +8,7 @@ Telegram bot for Chinese-language school content management: generating posts, i
 - Chinese-learning focused writing (hanzi, pinyin, examples, grammar nuances)
 - Image generation in unified Chinese minimal chibi style
 - Post templates: Fact of the day, Chinese wisdom, Weekly news, Hieroglyph breakdown
+- Ideas generator: save channel profile and get 10 tailored post ideas in one click
 - Post preview/editing, hashtags, polls, reactions
 - Scheduling and autopost queue
 - Post history, stats, and calendar view

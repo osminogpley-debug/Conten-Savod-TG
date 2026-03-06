@@ -1,8 +1,10 @@
 """Создание и публикация постов — ядро бота"""
 import asyncio
+import contextlib
 import logging
 import os
 import re as _re
+import time
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from handlers.start import is_admin
@@ -102,18 +104,47 @@ async def handle_post_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = update.message.text.strip()
     style = context.user_data.get("post_style", "default")
 
-    loading_msg = await update.message.reply_text("⏳ Loading поста... Генерирую текст и картинку.")
+    loading_msg = await update.message.reply_text("⏳ Loading поста... Шаг 1/3: генерирую текст")
+    start_ts = time.monotonic()
+    timer_stop = asyncio.Event()
+    timer_task = None
 
     try:
-        text, img_prompt = await asyncio.gather(
-            generate_text(topic, style=style),
-            generate_image_prompt(topic),
-        )
+        # Шаг 1: текст
+        text = await generate_text(topic, style=style)
         provider = get_last_text_provider() or "неизвестно"
         context.user_data["draft_ai_provider"] = provider
 
+        await loading_msg.edit_text(
+            f"⏳ Loading поста... Шаг 2/3: готовлю промпт картинки\n"
+            f"🤖 ИИ текста: {provider}"
+        )
+
+        # Шаг 2: промпт картинки
+        img_prompt = await generate_image_prompt(topic)
+
         text = fit_caption(text, PREVIEW_PREFIX)
+
+        # Шаг 3: картинка + живой таймер
+        async def _loading_timer():
+            while not timer_stop.is_set():
+                elapsed = int(time.monotonic() - start_ts)
+                try:
+                    await loading_msg.edit_text(
+                        "⏳ Loading поста... Шаг 3/3: генерирую картинку\n"
+                        f"🤖 ИИ текста: {provider}\n"
+                        f"⏱ Прошло: {elapsed} сек\n"
+                        "ℹ️ Если очередь генератора занята, это может занять 1-3 минуты"
+                    )
+                except Exception:
+                    pass
+                await asyncio.sleep(6)
+
+        timer_task = asyncio.create_task(_loading_timer())
         image_path = await generate_image(img_prompt)
+        timer_stop.set()
+        with contextlib.suppress(Exception):
+            await timer_task
 
         context.user_data["draft_text"] = text
         context.user_data["draft_image"] = image_path
@@ -126,6 +157,10 @@ async def handle_post_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show_preview(update, context, text, image_path)
 
     except Exception as e:
+        timer_stop.set()
+        if timer_task:
+            with contextlib.suppress(Exception):
+                await timer_task
         logger.error(f"Ошибка генерации поста: {e}", exc_info=True)
         try:
             await loading_msg.edit_text("❌ Ошибка генерации поста.")

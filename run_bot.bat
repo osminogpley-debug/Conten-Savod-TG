@@ -11,8 +11,10 @@ set "LOG_FILE=%LOG_DIR%\bot_console.log"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
 if /I "%~1"=="restart" (
-    echo [INFO] Restart mode: stopping all python.exe processes...
-    taskkill /F /IM python.exe >nul 2>&1
+    echo [INFO] Restart mode: stopping only chinaya bot processes...
+    for /f %%P in ('powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" ^| Where-Object { $_.CommandLine -like '*chinaya_bot\\bot.py*' } ^| Select-Object -ExpandProperty ProcessId"') do (
+        taskkill /F /PID %%P >nul 2>&1
+    )
     timeout /t 1 >nul
 )
 

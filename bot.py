@@ -3,8 +3,10 @@ import os
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from contextlib import suppress
 
 from telegram import Update
+from telegram.error import Conflict as TgConflict
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ChatMemberHandler, filters
@@ -36,6 +38,67 @@ logger = logging.getLogger(__name__)
 # Уменьшаем шум от httpx
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+_LOCK_HANDLE = None
+_LOCK_PATH = os.path.join(os.path.dirname(__file__), ".bot.instance.lock")
+
+
+def _acquire_single_instance_lock() -> bool:
+    """Гарантирует, что запущен только один экземпляр бота."""
+    global _LOCK_HANDLE
+    if _LOCK_HANDLE is not None:
+        return True
+
+    try:
+        lock_file = open(_LOCK_PATH, "a+")
+    except OSError as e:
+        logger.error(f"Не удалось открыть lock-файл: {e}")
+        return False
+
+    try:
+        if os.name == "nt":
+            import msvcrt
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except Exception:
+        with suppress(Exception):
+            lock_file.close()
+        logger.error("Обнаружен уже запущенный экземпляр бота. Второй запуск остановлен.")
+        return False
+
+    with suppress(Exception):
+        lock_file.seek(0)
+        lock_file.truncate()
+        lock_file.write(str(os.getpid()))
+        lock_file.flush()
+
+    _LOCK_HANDLE = lock_file
+    return True
+
+
+def _release_single_instance_lock() -> None:
+    """Освобождает lock при остановке бота."""
+    global _LOCK_HANDLE
+    if _LOCK_HANDLE is None:
+        return
+
+    try:
+        if os.name == "nt":
+            import msvcrt
+            _LOCK_HANDLE.seek(0)
+            msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(_LOCK_HANDLE.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    finally:
+        with suppress(Exception):
+            _LOCK_HANDLE.close()
+        _LOCK_HANDLE = None
 
 
 async def handle_text_message(update: Update, context):
@@ -97,6 +160,10 @@ async def handle_text_message(update: Update, context):
     elif state == "awaiting_signature":
         from handlers.settings import handle_signature_input
         await handle_signature_input(update, context)
+
+    elif state == "awaiting_ideas_profile":
+        from handlers.ideas import handle_ideas_profile_input
+        await handle_ideas_profile_input(update, context)
     
     else:
         if state == "draft_ready":
@@ -125,6 +192,10 @@ async def handle_callback(update: Update, context):
     elif data.startswith("style_"):
         from handlers.post import style_callback
         await style_callback(update, context)
+
+    elif data.startswith("tstyle_"):
+        from handlers.test import test_style_callback
+        await test_style_callback(update, context)
     
     elif data.startswith("tmpl_"):
         from handlers.templates import template_callback
@@ -149,6 +220,10 @@ async def handle_callback(update: Update, context):
     elif data.startswith("settings_"):
         from handlers.settings import settings_callback
         await settings_callback(update, context)
+
+    elif data.startswith("ideas_"):
+        from handlers.ideas import ideas_callback
+        await ideas_callback(update, context)
     
     elif data.startswith("channel_"):
         from handlers.channel import channel_callback
@@ -219,6 +294,16 @@ async def post_init(application):
 
 async def error_handler(update, context):
     """Глобальный обработчик ошибок"""
+    error_text = str(context.error or "")
+    if isinstance(context.error, TgConflict) or "terminated by other getupdates request" in error_text.lower():
+        logger.critical(
+            "Обнаружен Conflict getUpdates: запущено несколько экземпляров бота. "
+            "Останавливаю текущий процесс, чтобы убрать спам ошибок."
+        )
+        if context.application:
+            context.application.stop_running()
+        return
+
     logger.error(f"Ошибка при обработке обновления: {context.error}", exc_info=context.error)
     
     if update and update.effective_message:
@@ -237,12 +322,16 @@ def main():
         sys.exit(1)
     
     logger.info("Запуск бота...")
+
+    if not _acquire_single_instance_lock():
+        sys.exit(1)
     
     # Создаём приложение
     async def post_shutdown(application):
         """Закрытие ресурсов при остановке"""
         from services.http_session import close_session
         await close_session()
+        _release_single_instance_lock()
         logger.info("Бот остановлен, ресурсы освобождены")
     
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
@@ -253,6 +342,7 @@ def main():
     from handlers.schedule import schedule_handler, list_scheduled_handler, cancel_handler
     from handlers.test import testpost_handler
     from handlers.news import news_handler
+    from handlers.ideas import ideas_handler
     from handlers.settings import settings_handler
     from handlers.channel import connect_handler, handle_my_chat_member
     
@@ -264,6 +354,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel_handler))
     app.add_handler(CommandHandler("testpost", testpost_handler))
     app.add_handler(CommandHandler("news", news_handler))
+    app.add_handler(CommandHandler("ideas", ideas_handler))
     app.add_handler(CommandHandler("settings", settings_handler))
     app.add_handler(CommandHandler("connect", connect_handler))
     

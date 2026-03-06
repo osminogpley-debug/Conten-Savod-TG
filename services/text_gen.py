@@ -160,6 +160,39 @@ async def rewrite_news(news_text: str) -> str:
     return await generate_text_with_prompt(prompt)
 
 
+async def generate_post_ideas(channel_description: str, count: int = 10) -> str:
+    """Генерирует список идей для постов на основе описания канала."""
+    count = max(3, min(count, 20))
+    prompt = f"""Ты контент-стратег для Telegram-каналов.
+
+Описание канала:
+{channel_description}
+
+Сгенерируй ровно {count} идей постов для этого канала.
+
+Требования:
+- Пиши на русском
+- Каждая идея должна быть конкретной и прикладной, без воды
+- Идеи должны быть разноплановыми: обучение, вовлечение, практическая польза, дискуссия
+- Формат: нумерованный список от 1 до {count}
+- В каждой строке только одна идея
+- Без вступлений и без заключений
+- Без markdown-оформления и без символа *
+"""
+
+    result = await generate_text_with_prompt(prompt)
+    if result:
+        cleaned = _normalize_ideas_output(result, count)
+        if cleaned:
+            return cleaned
+
+    fallback_lines = [
+        f"{idx}. Идея #{idx}: практический пост для вашей аудитории по теме канала"
+        for idx in range(1, count + 1)
+    ]
+    return "\n".join(fallback_lines)
+
+
 async def generate_text_with_prompt(prompt: str) -> str:
     """Генерация с произвольным промптом"""
     generators = _build_generator_list(prompt)
@@ -186,15 +219,23 @@ async def generate_text_with_prompt(prompt: str) -> str:
 
 async def generate_image_prompt(topic: str) -> str:
     """Генерация промпта для картинки на основе темы"""
-    prompt = f"""Based on this topic about China: "{topic}"
+    is_china_topic = _is_china_related_topic(topic)
+    china_rule = (
+        "The topic is China-related: include subtle Chinese cultural vibes (tea, calligraphy, ornaments, architecture) if relevant."
+        if is_china_topic
+        else "The topic is NOT China-focused: do not force Chinese symbols; illustrate the topic directly."
+    )
+
+    prompt = f"""Based on this topic: "{topic}"
 Create a short (1-2 sentences, max 120 characters) image generation prompt in English.
 Requirements:
-- The image must directly illustrate the specific topic, NOT generic China imagery
+- The image must directly illustrate the specific topic, avoid generic clichés
 - Soft pastel palette, warm muted tones, NO neon
 - Minimalist composition, clean thin outlines, cute chibi style
-- Keep one clear central subject; simple background with Chinese decorative accents
-- If topic is language/hieroglyphs: calligraphy paper, brush, tea set, study desk elements
-- If character is present: chibi style in hanfu, gentle expression, no realism
+- Keep one clear central subject; simple readable background
+- If topic is language/hieroglyphs: show study elements (paper, brush, desk, notes)
+- If character is present: chibi style, gentle expression, no realism
+- {china_rule}
 - Avoid photorealism, 3D render, clutter, complex busy scenes, abstraction
 - No text on the image, no watermarks
 Return ONLY the image prompt, nothing else."""
@@ -203,7 +244,9 @@ Return ONLY the image prompt, nothing else."""
     if result and len(result) < 300:
         result = result.strip('"\'').strip()
         return result
-    return f"Cute chibi Chinese-style illustration about {topic}, minimalist pastel scene, traditional details, clear central subject, no text"
+    if is_china_topic:
+        return f"Cute chibi illustration about {topic}, pastel minimalist scene, subtle Chinese details, clear central subject, no text"
+    return f"Cute chibi illustration about {topic}, pastel minimalist scene, clear central subject, no text"
 
 
 # ============================================================
@@ -634,6 +677,28 @@ def _clean_response(text: str | None) -> str:
     return text.strip()
 
 
+def _normalize_ideas_output(text: str, count: int) -> str:
+    """Нормализует ответ с идеями в формат 1..N по одной идее на строку."""
+    if not text:
+        return ""
+
+    raw_lines = [line.strip(" -\t") for line in text.replace("\r", "").split("\n") if line.strip()]
+    ideas = []
+
+    for line in raw_lines:
+        line = line.replace("*", "").strip()
+        line = re.sub(r"^\d+[\).:-]?\s*", "", line)
+        if len(line) >= 8:
+            ideas.append(line)
+        if len(ideas) >= count:
+            break
+
+    if len(ideas) < count:
+        return ""
+
+    return "\n".join(f"{idx}. {idea}" for idx, idea in enumerate(ideas[:count], start=1))
+
+
 def _is_hanzi_topic(text: str) -> bool:
     """Определяет, что тема связана с китайскими иероглифами/языком."""
     if not text:
@@ -656,6 +721,21 @@ def _is_hanzi_topic(text: str) -> bool:
         return True
 
     # Любой CJK-символ в теме/промпте
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
+
+
+def _is_china_related_topic(text: str) -> bool:
+    """Определяет, связана ли тема с Китаем, китайским языком или культурой."""
+    if not text:
+        return False
+    low = text.lower()
+    keywords = [
+        "китай", "китае", "china", "chinese", "пекин", "шанхай",
+        "иероглиф", "ханьцзы", "пиньин", "hsk", "мандари", "ханьфу",
+        "汉字", "拼音", "中文", "普通话",
+    ]
+    if any(k in low for k in keywords):
+        return True
     return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 

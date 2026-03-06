@@ -63,7 +63,7 @@ CHANNEL_STYLE_PROMPT = """
 - НЕ УПРОЩАЙ — читатели хотят реально разобраться, а не получить поверхностную отписку
 """
 
-IMAGE_PROMPT_STYLE = "Unified visual style: cute chibi Chinese aesthetic, minimalist composition, soft pastel palette, clean thin outlines, gentle warm light, traditional Chinese details (hanfu, tea, calligraphy, ornaments), simple background, not abstract, no text, no watermark."
+IMAGE_PROMPT_STYLE = "Unified visual style: cute chibi aesthetic, minimalist composition, soft pastel palette, clean thin outlines, gentle warm light, simple background, not abstract, no text, no watermark."
 
 # Лимиты
 MAX_POST_LENGTH = 1024  # Telegram caption limit

@@ -44,7 +44,7 @@ async def generate_image(prompt: str) -> str | None:
 
     consistency_tail = (
         " unified style, same visual language across posts, "
-        "chibi minimal Chinese vibe, pastel colors, clean line art, "
+        "chibi minimal aesthetic, pastel colors, clean line art, "
         "avoid photorealism, avoid abstract shapes, avoid dark heavy contrast"
     )
     full_prompt = f"{IMAGE_PROMPT_STYLE} {prompt}. {consistency_tail}".strip()

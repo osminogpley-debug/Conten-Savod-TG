@@ -106,13 +106,23 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = "awaiting_schedule_topic"
 
     elif action == "menu_testpost":
+        from config import STYLE_NAMES
+        rows = []
+        for key, name in STYLE_NAMES.items():
+            rows.append([InlineKeyboardButton(name, callback_data=f"tstyle_{key}")])
+        rows.append([InlineKeyboardButton("🏠 Меню", callback_data="menu_back")])
+        context.user_data["test_style"] = "default"
+        context.user_data["state"] = "awaiting_test_topic"
         await query.edit_message_text(
             "🧪 <b>Тестовый пост</b>\n\n"
-            "Отправьте тему. Пост придёт в ЛС.",
+            "Выберите стиль:",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Меню", callback_data="menu_back")]])
+            reply_markup=InlineKeyboardMarkup(rows)
         )
-        context.user_data["state"] = "awaiting_test_topic"
+
+    elif action == "menu_ideas":
+        from handlers.ideas import ideas_menu
+        await ideas_menu(update, context)
 
     elif action == "menu_list":
         from handlers.schedule import list_scheduled_handler
@@ -166,6 +176,9 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Факт дня, Китайская мудрость, Новости недели, Разбор иероглифа\n\n"
             "📰 <b>Контент из новостей</b>\n"
             "• Создание постов по ссылке или теме\n\n"
+            "💡 <b>Генератор идей</b>\n"
+            "• Сохранение описания вашего канала\n"
+            "• Генерация 10 готовых идей под вашу нишу\n\n"
             "⏰ <b>Планирование</b>\n"
             "• Отложенная публикация на точное время\n"
             "• Просмотр и отмена запланированных\n\n"
@@ -195,6 +208,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start — Главное меню\n"
         "/newpost — Создать пост\n"
         "/testpost — Тестовый пост (в ЛС)\n"
+        "/ideas — Генератор 10 идей\n"
         "/news — Пост из новости\n"
         "/schedule — Запланировать пост\n"
         "/list — Список запланированных\n"
