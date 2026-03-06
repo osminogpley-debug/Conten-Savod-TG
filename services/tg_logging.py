@@ -19,6 +19,13 @@ class TelegramLogHandler(logging.Handler):
         if not self.admin_id:
             return
 
+        # Не шлём в ЛС шумные служебные ошибки polling-конфликта.
+        # Причина обычно внешняя (второй инстанс с тем же токеном),
+        # а повторяющиеся сообщения быстро превращаются в спам.
+        msg = (record.getMessage() or "").lower()
+        if "terminated by other getupdates request" in msg:
+            return
+
         # Throttle: не спамим одну и ту же ошибку
         key = f"{record.name}:{record.lineno}:{record.getMessage()[:50]}"
         now = datetime.now()
