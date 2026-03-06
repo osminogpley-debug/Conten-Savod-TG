@@ -160,15 +160,25 @@ async def rewrite_news(news_text: str) -> str:
     return await generate_text_with_prompt(prompt)
 
 
-async def generate_post_ideas(channel_description: str, count: int = 10) -> str:
+async def generate_post_ideas(channel_description: str, count: int = 10, avoid_ideas: list[str] | None = None) -> str:
     """Генерирует список идей для постов на основе описания канала."""
     count = max(3, min(count, 20))
+    avoid_ideas = [item.strip() for item in (avoid_ideas or []) if item and item.strip()]
+    avoid_block = ""
+    if avoid_ideas:
+        numbered = "\n".join(f"- {item}" for item in avoid_ideas[:30])
+        avoid_block = (
+            "\nНе повторяй идеи из этого списка (ни дословно, ни по смыслу):\n"
+            f"{numbered}\n"
+        )
+
     prompt = f"""Ты контент-стратег для Telegram-каналов.
 
 Описание канала:
 {channel_description}
 
 Сгенерируй ровно {count} идей постов для этого канала.
+{avoid_block}
 
 Требования:
 - Пиши на русском
@@ -679,8 +689,16 @@ def _clean_response(text: str | None) -> str:
 
 def _normalize_ideas_output(text: str, count: int) -> str:
     """Нормализует ответ с идеями в формат 1..N по одной идее на строку."""
-    if not text:
+    ideas = _extract_idea_lines(text, count)
+    if len(ideas) < count:
         return ""
+    return "\n".join(f"{idx}. {idea}" for idx, idea in enumerate(ideas[:count], start=1))
+
+
+def _extract_idea_lines(text: str, limit: int = 20) -> list[str]:
+    """Извлекает чистые строки идей без нумерации и markdown."""
+    if not text:
+        return []
 
     raw_lines = [line.strip(" -\t") for line in text.replace("\r", "").split("\n") if line.strip()]
     ideas = []
@@ -690,13 +708,9 @@ def _normalize_ideas_output(text: str, count: int) -> str:
         line = re.sub(r"^\d+[\).:-]?\s*", "", line)
         if len(line) >= 8:
             ideas.append(line)
-        if len(ideas) >= count:
+        if len(ideas) >= limit:
             break
-
-    if len(ideas) < count:
-        return ""
-
-    return "\n".join(f"{idx}. {idea}" for idx, idea in enumerate(ideas[:count], start=1))
+    return ideas
 
 
 def _is_hanzi_topic(text: str) -> bool:
