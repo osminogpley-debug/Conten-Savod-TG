@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+
+# Runtime data
+chinaya.db
+logs/
+images/
+
+# OS/editor
+.vscode/
+.DS_Store
+Thumbs.db
